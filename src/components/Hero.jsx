@@ -32,6 +32,9 @@ export default function Hero({ onOpenPortal }) {
   // Debug HUD
   const [hoverName, setHoverName] = useState('');
   const [hoverIsHit, setHoverIsHit] = useState(false);
+  const [sceneStatus, setSceneStatus] = useState('idle'); // idle | loading | loaded
+  const [lastEvent, setLastEvent] = useState('');
+  const [acceptAllForDebug, setAcceptAllForDebug] = useState(true); // default ON so you see changes
 
   // Performance tier detection
   const perf = useMemo(() => {
@@ -71,6 +74,17 @@ export default function Hero({ onOpenPortal }) {
     return () => cic(id);
   }, []);
 
+  // Keyboard debug toggle: Shift+D to accept all names as hit
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.key === 'd' || e.key === 'D') && e.shiftKey) {
+        setAcceptAllForDebug((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const enableCanvasPointerEvents = useCallback(() => {
     const canvas = canvasRef.current;
     if (canvas) canvas.style.pointerEvents = '';
@@ -85,51 +99,81 @@ export default function Hero({ onOpenPortal }) {
   }, [enableCanvasPointerEvents]);
 
   const setCanvasEnhancements = useCallback(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current) return false;
     const canvas = containerRef.current.querySelector('canvas');
-    if (canvas) {
-      canvasRef.current = canvas;
-      canvas.setAttribute('aria-label', 'Interactive 3D keyboard');
-      canvas.style.userSelect = 'none';
-      canvas.style.webkitUserSelect = 'none';
-      canvas.style.touchAction = 'none';
-      canvas.style.webkitTapHighlightColor = 'transparent';
+    if (!canvas) return false;
+    if (canvasRef.current === canvas) return true; // already bound
+
+    canvasRef.current = canvas;
+    canvas.setAttribute('aria-label', 'Interactive 3D keyboard');
+    canvas.style.userSelect = 'none';
+    canvas.style.webkitUserSelect = 'none';
+    canvas.style.touchAction = 'none';
+    canvas.style.webkitTapHighlightColor = 'transparent';
+    canvas.style.cursor = 'default';
+
+    // Enforce single actionable press per pointer sequence at the canvas level
+    const onPointerDown = (ev) => {
+      if (pressedLockRef.current) {
+        ev.preventDefault?.();
+        ev.stopImmediatePropagation?.();
+        ev.stopPropagation?.();
+        return;
+      }
+      pressedLockRef.current = true;
+      activePointerIdRef.current = ev.pointerId ?? 'mouse';
+      lastPointerDownTsRef.current = typeof ev.timeStamp === 'number' ? ev.timeStamp : performance.now();
+    };
+    const onPointerUp = () => releaseLock();
+    const onPointerCancel = () => releaseLock();
+    const onLostPointerCapture = () => releaseLock();
+
+    // Use non-passive so we can prevent default/propagation
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+    canvas.addEventListener('pointerup', onPointerUp, { passive: true });
+    canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
+    canvas.addEventListener('lostpointercapture', onLostPointerCapture, { passive: true });
+
+    // Fallback debug: show canvas coordinates to confirm the canvas is receiving input
+    const onMouseMove = (ev) => {
+      setLastEvent('dom:mousemove');
+      // Keep HUD responsive even if Spline events don't fire
+      setHoverName(`(canvas x:${Math.round(ev.clientX)} y:${Math.round(ev.clientY)})`);
+      setHoverIsHit(false);
       canvas.style.cursor = 'default';
+    };
+    canvas.addEventListener('mousemove', onMouseMove, { passive: true });
 
-      // Enforce single actionable press per pointer sequence at the canvas level
-      const onPointerDown = (ev) => {
-        // If already locked, block additional down events in this sequence
-        if (pressedLockRef.current) {
-          ev.preventDefault?.();
-          ev.stopImmediatePropagation?.();
-          ev.stopPropagation?.();
-          return;
-        }
-        pressedLockRef.current = true;
-        activePointerIdRef.current = ev.pointerId ?? 'mouse';
-        lastPointerDownTsRef.current = typeof ev.timeStamp === 'number' ? ev.timeStamp : performance.now();
-      };
-      const onPointerUp = () => releaseLock();
-      const onPointerCancel = () => releaseLock();
-      const onLostPointerCapture = () => releaseLock();
+    // Cleanup listeners if canvas gets replaced
+    const cleanup = () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerCancel);
+      canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
+      canvas.removeEventListener('mousemove', onMouseMove);
+    };
+    // store cleanup on the element for later unmount
+    canvas.__singlePressCleanup = cleanup;
 
-      // Use non-passive so we can prevent default/propagation
-      canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
-      canvas.addEventListener('pointerup', onPointerUp, { passive: true });
-      canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
-      canvas.addEventListener('lostpointercapture', onLostPointerCapture, { passive: true });
-
-      // Cleanup listeners if canvas gets replaced
-      const cleanup = () => {
-        canvas.removeEventListener('pointerdown', onPointerDown);
-        canvas.removeEventListener('pointerup', onPointerUp);
-        canvas.removeEventListener('pointercancel', onPointerCancel);
-        canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
-      };
-      // store cleanup on the element for later unmount
-      canvas.__singlePressCleanup = cleanup;
-    }
+    return true;
   }, [releaseLock]);
+
+  // If Spline doesn't call onLoad, still try to find and bind the canvas repeatedly for a short window
+  useEffect(() => {
+    if (!inView || !canLoad3D) return;
+    setSceneStatus((s) => (s === 'idle' ? 'loading' : s));
+    let tries = 0;
+    let rafId;
+    const loop = () => {
+      tries += 1;
+      const bound = setCanvasEnhancements();
+      if (!bound && tries < 90) {
+        rafId = requestAnimationFrame(loop);
+      }
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [inView, canLoad3D, setCanvasEnhancements]);
 
   const spawnEffect = useCallback((pageX, pageY) => {
     if (perf.particleCount === 0) return; // respect reduced motion
@@ -163,10 +207,11 @@ export default function Hero({ onOpenPortal }) {
 
   // Strict hit-plane naming. Planes must be named with hit- prefix and be physically above key meshes in Spline.
   const isHitPlaneName = useCallback((name) => {
+    if (acceptAllForDebug) return true;
     if (!name) return false;
     const n = String(name).toLowerCase();
     return n.startsWith('hit-');
-  }, []);
+  }, [acceptAllForDebug]);
 
   // Shared hover handler (works with both component props and app-level events)
   const onSplineHover = useCallback((e) => {
@@ -174,6 +219,7 @@ export default function Hero({ onOpenPortal }) {
     const hit = isHitPlaneName(name);
     setHoverName(name);
     setHoverIsHit(hit);
+    setLastEvent('spline:hover');
     if (canvasRef.current) {
       canvasRef.current.style.cursor = hit ? 'pointer' : 'default';
     }
@@ -223,9 +269,11 @@ export default function Hero({ onOpenPortal }) {
     if (!isHitPlaneName(name)) {
       setHoverName(name);
       setHoverIsHit(false);
+      setLastEvent('spline:down-nonhit');
       return;
     }
 
+    setLastEvent('spline:down');
     pressedLockRef.current = true;
     activePointerIdRef.current = e?.originalEvent?.pointerId ?? 'mouse';
     lastPointerDownTsRef.current = typeof e?.originalEvent?.timeStamp === 'number' ? e.originalEvent.timeStamp : performance.now();
@@ -257,6 +305,7 @@ export default function Hero({ onOpenPortal }) {
   // When the Spline scene loads, wire object-level listeners (fallback for older runtime)
   const handleLoad = useCallback((splineApp) => {
     setLoaded(true);
+    setSceneStatus('loaded');
     setTimeout(setCanvasEnhancements, 0);
 
     splineRef.current = splineApp;
@@ -270,6 +319,13 @@ export default function Hero({ onOpenPortal }) {
       splineApp?.addEventListener?.('mouseDown', onSplineMouseDown);
     } catch (_) {}
   }, [onSplineHover, onSplineMouseDown, setCanvasEnhancements]);
+
+  // Track initial loading state to surface in HUD
+  useEffect(() => {
+    if (show3D && sceneStatus === 'idle') {
+      setSceneStatus('loading');
+    }
+  }, [show3D, sceneStatus]);
 
   // Cleanup Spline listeners on unmount
   useEffect(() => {
@@ -456,11 +512,21 @@ export default function Hero({ onOpenPortal }) {
           <span>Hit plane:</span>
           <span className={`h-2.5 w-2.5 rounded-full ${hoverIsHit ? 'bg-emerald-500' : 'bg-rose-500'}`} />
         </div>
-        <div className="mt-1 text-[10px] text-slate-500">Click only works on names starting with "hit-"</div>
+        <div className="mt-0.5">Scene: <span className="font-mono">{sceneStatus}</span></div>
+        <div className="mt-0.5">Last event: <span className="font-mono">{lastEvent || '—'}</span></div>
+        <div className="mt-0.5">Mode: <span className="font-mono">{acceptAllForDebug ? 'accept-all' : 'hit-only'}</span> <span className="ml-2 text-[10px] text-slate-500">(Shift+D to toggle)</span></div>
+        <div className="mt-1 text-[10px] text-slate-500">Clicks only work on names starting with "hit-" unless accept-all is enabled.</div>
       </div>
 
       {/* If events never fired, show a gentle hint after a moment */}
       <IdleHint visible={show3D && loaded && !hoverName} />
+
+      {/* Big banner if Spline events aren't coming through */}
+      {show3D && sceneStatus === 'loaded' && !lastEvent && (
+        <div className="absolute left-1/2 top-4 z-50 -translate-x-1/2 rounded-md bg-rose-50 px-3 py-1 text-xs text-rose-800 ring-1 ring-rose-200">
+          No Spline hover events detected. Move your cursor over the keyboard. If this persists, the scene may block interaction or be layered behind another mesh.
+        </div>
+      )}
     </section>
   );
 }
