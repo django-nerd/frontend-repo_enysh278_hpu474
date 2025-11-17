@@ -17,8 +17,6 @@ export default function Hero({ onOpenPortal }) {
   const canvasRef = useRef(null);
   const sectionRef = useRef(null);
   const splineRef = useRef(null);
-  const splineMouseDownHandlerRef = useRef(null);
-  const splineHoverHandlerRef = useRef(null);
 
   // Global press lock and active pointer tracking to prevent multi-press
   const pressedLockRef = useRef(false);
@@ -170,31 +168,34 @@ export default function Hero({ onOpenPortal }) {
     return n.startsWith('hit-');
   }, []);
 
-  // When the Spline scene loads, wire object-level listeners
-  const handleLoad = useCallback((splineApp) => {
-    setLoaded(true);
-    setTimeout(setCanvasEnhancements, 0);
+  // Shared hover handler (works with both component props and app-level events)
+  const onSplineHover = useCallback((e) => {
+    const name = e?.target?.name || '';
+    const hit = isHitPlaneName(name);
+    setHoverName(name);
+    setHoverIsHit(hit);
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = hit ? 'pointer' : 'default';
+    }
+  }, [isHitPlaneName]);
 
-    splineRef.current = splineApp;
+  // Shared mouseDown handler (works with both component props and app-level events)
+  const onSplineMouseDown = useCallback((e) => {
+    const now = performance.now();
+    if (now < blockUntilRef.current) {
+      e?.stopImmediatePropagation?.();
+      e?.stopPropagation?.();
+      e?.preventDefault?.();
+      const oe = e?.originalEvent;
+      oe?.stopImmediatePropagation?.();
+      oe?.stopPropagation?.();
+      oe?.preventDefault?.();
+      return;
+    }
 
-    // Hover/move to surface target name + cursor state
-    const hoverHandler = (e) => {
-      const name = e?.target?.name || '';
-      const hit = isHitPlaneName(name);
-      setHoverName(name);
-      setHoverIsHit(hit);
-      if (canvasRef.current) {
-        canvasRef.current.style.cursor = hit ? 'pointer' : 'default';
-      }
-    };
-    splineHoverHandlerRef.current = hoverHandler;
-
-    // Create and save handler so we can remove it later
-    const mouseDownHandler = (e) => {
-      const now = performance.now();
-      // Hard block: ignore any Spline mouseDown during block window
-      if (now < blockUntilRef.current) {
-        // Swallow event aggressively
+    if (pressedLockRef.current) {
+      const pid = e?.originalEvent?.pointerId ?? 'mouse';
+      if (activePointerIdRef.current !== null && activePointerIdRef.current !== pid) {
         e?.stopImmediatePropagation?.();
         e?.stopPropagation?.();
         e?.preventDefault?.();
@@ -204,109 +205,87 @@ export default function Hero({ onOpenPortal }) {
         oe?.preventDefault?.();
         return;
       }
-
-      // Enforce single press: only accept first hit and then open a short block window
-      if (pressedLockRef.current) {
-        const pid = e?.originalEvent?.pointerId ?? 'mouse';
-        if (activePointerIdRef.current !== null && activePointerIdRef.current !== pid) {
-          e?.stopImmediatePropagation?.();
-          e?.stopPropagation?.();
-          e?.preventDefault?.();
-          const oe = e?.originalEvent;
-          oe?.stopImmediatePropagation?.();
-          oe?.stopPropagation?.();
-          oe?.preventDefault?.();
-          return; // ignore different pointer while locked
-        }
-        // Same pointer additional mouseDown -> swallow
-        e?.stopImmediatePropagation?.();
-        e?.stopPropagation?.();
-        e?.preventDefault?.();
-        const oe2 = e?.originalEvent;
-        oe2?.stopImmediatePropagation?.();
-        oe2?.stopPropagation?.();
-        oe2?.preventDefault?.();
-        return;
-      }
-
-      const btn = e?.originalEvent?.button;
-      const buttons = e?.originalEvent?.buttons;
-      if (btn !== 0 && buttons !== 1) return;
-
-      const name = e?.target?.name || '';
-      // Only react when clicking dedicated hit planes, not full button meshes
-      if (!isHitPlaneName(name)) {
-        // Surface this in the HUD for debugging
-        setHoverName(name);
-        setHoverIsHit(false);
-        return;
-      }
-
-      // Lock immediately so sibling/parent hits in the same frame are ignored
-      pressedLockRef.current = true;
-      activePointerIdRef.current = e?.originalEvent?.pointerId ?? 'mouse';
-      lastPointerDownTsRef.current = typeof e?.originalEvent?.timeStamp === 'number' ? e.originalEvent.timeStamp : performance.now();
-
-      // Start a very short hard-block window and temporarily disable pointer events on the canvas
-      blockUntilRef.current = now + 140; // ~1-2 frames
-      const canvas = canvasRef.current;
-      if (canvas) {
-        canvas.style.pointerEvents = 'none';
-        // Re-enable soon, or upon natural release
-        window.setTimeout(() => {
-          enableCanvasPointerEvents();
-        }, 160);
-      }
-
-      const clientX = e?.originalEvent?.clientX ?? 0;
-      const clientY = e?.originalEvent?.clientY ?? 0;
-
-      // Swallow the original event to block other Spline object handlers
       e?.stopImmediatePropagation?.();
       e?.stopPropagation?.();
       e?.preventDefault?.();
-      const oe = e?.originalEvent;
-      oe?.stopImmediatePropagation?.();
-      oe?.stopPropagation?.();
-      oe?.preventDefault?.();
+      const oe2 = e?.originalEvent;
+      oe2?.stopImmediatePropagation?.();
+      oe2?.stopPropagation?.();
+      oe2?.preventDefault?.();
+      return;
+    }
 
-      spawnEffect(clientX, clientY);
-      triggerPortal();
-    };
-    splineMouseDownHandlerRef.current = mouseDownHandler;
+    const btn = e?.originalEvent?.button;
+    const buttons = e?.originalEvent?.buttons;
+    if (btn !== 0 && buttons !== 1) return;
+
+    const name = e?.target?.name || '';
+    if (!isHitPlaneName(name)) {
+      setHoverName(name);
+      setHoverIsHit(false);
+      return;
+    }
+
+    pressedLockRef.current = true;
+    activePointerIdRef.current = e?.originalEvent?.pointerId ?? 'mouse';
+    lastPointerDownTsRef.current = typeof e?.originalEvent?.timeStamp === 'number' ? e.originalEvent.timeStamp : performance.now();
+
+    blockUntilRef.current = now + 140;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.style.pointerEvents = 'none';
+      window.setTimeout(() => {
+        enableCanvasPointerEvents();
+      }, 160);
+    }
+
+    const clientX = e?.originalEvent?.clientX ?? 0;
+    const clientY = e?.originalEvent?.clientY ?? 0;
+
+    e?.stopImmediatePropagation?.();
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    const oe = e?.originalEvent;
+    oe?.stopImmediatePropagation?.();
+    oe?.stopPropagation?.();
+    oe?.preventDefault?.();
+
+    spawnEffect(clientX, clientY);
+    triggerPortal();
+  }, [enableCanvasPointerEvents, isHitPlaneName, spawnEffect, triggerPortal]);
+
+  // When the Spline scene loads, wire object-level listeners (fallback for older runtime)
+  const handleLoad = useCallback((splineApp) => {
+    setLoaded(true);
+    setTimeout(setCanvasEnhancements, 0);
+
+    splineRef.current = splineApp;
 
     try {
-      splineApp?.addEventListener?.('mouseMove', hoverHandler);
-      splineApp?.addEventListener?.('mouseHover', hoverHandler);
+      splineApp?.addEventListener?.('mouseMove', onSplineHover);
+      splineApp?.addEventListener?.('mouseHover', onSplineHover);
     } catch (_) {}
 
     try {
-      splineApp?.addEventListener?.('mouseDown', mouseDownHandler);
-    } catch (_) {
-      // no-op if API changes
-    }
-  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents, isHitPlaneName]);
+      splineApp?.addEventListener?.('mouseDown', onSplineMouseDown);
+    } catch (_) {}
+  }, [onSplineHover, onSplineMouseDown, setCanvasEnhancements]);
 
   // Cleanup Spline listeners on unmount
   useEffect(() => {
     return () => {
       const app = splineRef.current;
-      const downHandler = splineMouseDownHandlerRef.current;
-      const hoverHandler = splineHoverHandlerRef.current;
+      try { app?.removeEventListener?.('mouseDown', onSplineMouseDown); } catch (_) {}
       try {
-        app?.removeEventListener?.('mouseDown', downHandler);
+        app?.removeEventListener?.('mouseMove', onSplineHover);
+        app?.removeEventListener?.('mouseHover', onSplineHover);
       } catch (_) {}
-      try {
-        app?.removeEventListener?.('mouseMove', hoverHandler);
-        app?.removeEventListener?.('mouseHover', hoverHandler);
-      } catch (_) {}
-      // Cleanup canvas-level listeners if attached
       try {
         const canvas = canvasRef.current;
         canvas?.__singlePressCleanup?.();
       } catch (_) {}
     };
-  }, []);
+  }, [onSplineHover, onSplineMouseDown]);
 
   // Safety: ensure any stuck pointer states inside the Spline canvas are released
   useEffect(() => {
@@ -399,7 +378,13 @@ export default function Hero({ onOpenPortal }) {
       >
         {show3D ? (
           <Suspense fallback={null}>
-            <SplineLazy scene={SCENE_URL} onLoad={handleLoad} />
+            <SplineLazy
+              scene={SCENE_URL}
+              onLoad={handleLoad}
+              onMouseMove={onSplineHover}
+              onMouseHover={onSplineHover}
+              onMouseDown={onSplineMouseDown}
+            />
           </Suspense>
         ) : null}
       </div>
@@ -473,7 +458,25 @@ export default function Hero({ onOpenPortal }) {
         </div>
         <div className="mt-1 text-[10px] text-slate-500">Click only works on names starting with "hit-"</div>
       </div>
+
+      {/* If events never fired, show a gentle hint after a moment */}
+      <IdleHint visible={show3D && loaded && !hoverName} />
     </section>
+  );
+}
+
+function IdleHint({ visible }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!visible) { setShow(false); return; }
+    const id = setTimeout(() => setShow(true), 1500);
+    return () => clearTimeout(id);
+  }, [visible]);
+  if (!show) return null;
+  return (
+    <div className="absolute left-3 top-20 z-50 rounded-md bg-amber-50 px-3 py-1 text-xs text-amber-800 ring-1 ring-amber-200">
+      Move your cursor over the keyboard. If the name doesn’t change, Spline events aren’t reaching the app.
+    </div>
   );
 }
 
