@@ -106,33 +106,23 @@ export default function Hero({ onOpenPortal }) {
     }, 360);
   }, [onOpenPortal]);
 
-  // Hook pointer presses on the Spline layer
+  // Only open portal when clicking directly on the Spline canvas (3D keyboard area)
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onPointerDown = (e) => {
-      // ignore non-primary
-      if (e.button !== undefined && e.button !== 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const handler = (e) => {
+      // Primary button only and target must be the canvas
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const isPrimary = e.button === undefined || e.button === 0;
+      if (!isPrimary) return;
+      if (e.target !== canvas) return; // ignore clicks on overlays or container
+
       spawnEffect(e.clientX, e.clientY);
       triggerPortal();
     };
-    el.addEventListener('pointerdown', onPointerDown);
-    return () => el.removeEventListener('pointerdown', onPointerDown);
-  }, [spawnEffect, triggerPortal]);
-
-  // Physical keyboard press also opens portal (once per keystroke)
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.repeat) return;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const jitterX = (Math.random() - 0.5) * vw * 0.2;
-      const jitterY = (Math.random() - 0.5) * vh * 0.1;
-      spawnEffect(vw * 0.5 + jitterX, vh * 0.7 + jitterY);
-      triggerPortal();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    container.addEventListener('pointerdown', handler, true);
+    return () => container.removeEventListener('pointerdown', handler, true);
   }, [spawnEffect, triggerPortal]);
 
   return (
