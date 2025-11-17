@@ -18,6 +18,7 @@ export default function Hero({ onOpenPortal }) {
   const sectionRef = useRef(null);
   const splineRef = useRef(null);
   const splineMouseDownHandlerRef = useRef(null);
+  const splineHoverHandlerRef = useRef(null);
 
   // Global press lock and active pointer tracking to prevent multi-press
   const pressedLockRef = useRef(false);
@@ -29,6 +30,10 @@ export default function Hero({ onOpenPortal }) {
   const [effects, setEffects] = useState([]);
   const idRef = useRef(0);
   const lastOpenRef = useRef(0);
+
+  // Debug HUD
+  const [hoverName, setHoverName] = useState('');
+  const [hoverIsHit, setHoverIsHit] = useState(false);
 
   // Performance tier detection
   const perf = useMemo(() => {
@@ -158,20 +163,31 @@ export default function Hero({ onOpenPortal }) {
     }, 320);
   }, [onOpenPortal]);
 
-  // Dedicated hit-plane name patterns. Only these are actionable.
-  const HIT_NAME_PATTERNS = useMemo(() => [
-    /^hit-/, // names like hit-A, hit-enter, hit-space
-    /(^|\b)plane(\b|$)/, // contains "plane"
-    /hitplane/, // combined naming
-    /_hit$/ // suffix convention
-  ], []);
+  // Strict hit-plane naming. Planes must be named with hit- prefix and be physically above key meshes in Spline.
+  const isHitPlaneName = useCallback((name) => {
+    if (!name) return false;
+    const n = String(name).toLowerCase();
+    return n.startsWith('hit-');
+  }, []);
 
-  // When the Spline scene loads, wire object-level mouseDown to only respond to hit planes
+  // When the Spline scene loads, wire object-level listeners
   const handleLoad = useCallback((splineApp) => {
     setLoaded(true);
     setTimeout(setCanvasEnhancements, 0);
 
     splineRef.current = splineApp;
+
+    // Hover/move to surface target name + cursor state
+    const hoverHandler = (e) => {
+      const name = e?.target?.name || '';
+      const hit = isHitPlaneName(name);
+      setHoverName(name);
+      setHoverIsHit(hit);
+      if (canvasRef.current) {
+        canvasRef.current.style.cursor = hit ? 'pointer' : 'default';
+      }
+    };
+    splineHoverHandlerRef.current = hoverHandler;
 
     // Create and save handler so we can remove it later
     const mouseDownHandler = (e) => {
@@ -217,10 +233,14 @@ export default function Hero({ onOpenPortal }) {
       const buttons = e?.originalEvent?.buttons;
       if (btn !== 0 && buttons !== 1) return;
 
-      const name = e?.target?.name?.toLowerCase?.() || '';
+      const name = e?.target?.name || '';
       // Only react when clicking dedicated hit planes, not full button meshes
-      const isHitPlane = HIT_NAME_PATTERNS.some((re) => re.test(name));
-      if (!isHitPlane) return;
+      if (!isHitPlaneName(name)) {
+        // Surface this in the HUD for debugging
+        setHoverName(name);
+        setHoverIsHit(false);
+        return;
+      }
 
       // Lock immediately so sibling/parent hits in the same frame are ignored
       pressedLockRef.current = true;
@@ -256,19 +276,29 @@ export default function Hero({ onOpenPortal }) {
     splineMouseDownHandlerRef.current = mouseDownHandler;
 
     try {
+      splineApp?.addEventListener?.('mouseMove', hoverHandler);
+      splineApp?.addEventListener?.('mouseHover', hoverHandler);
+    } catch (_) {}
+
+    try {
       splineApp?.addEventListener?.('mouseDown', mouseDownHandler);
     } catch (_) {
       // no-op if API changes
     }
-  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents, HIT_NAME_PATTERNS]);
+  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents, isHitPlaneName]);
 
   // Cleanup Spline listeners on unmount
   useEffect(() => {
     return () => {
       const app = splineRef.current;
-      const handler = splineMouseDownHandlerRef.current;
+      const downHandler = splineMouseDownHandlerRef.current;
+      const hoverHandler = splineHoverHandlerRef.current;
       try {
-        app?.removeEventListener?.('mouseDown', handler);
+        app?.removeEventListener?.('mouseDown', downHandler);
+      } catch (_) {}
+      try {
+        app?.removeEventListener?.('mouseMove', hoverHandler);
+        app?.removeEventListener?.('mouseHover', hoverHandler);
       } catch (_) {}
       // Cleanup canvas-level listeners if attached
       try {
@@ -432,6 +462,17 @@ export default function Hero({ onOpenPortal }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Debug HUD: shows current hovered object and whether it's a hit plane */}
+      <div className="absolute left-3 top-3 z-50 rounded-md border border-slate-200 bg-white/90 px-3 py-1 text-xs text-slate-700 shadow-sm backdrop-blur">
+        <div className="font-medium">Hover</div>
+        <div className="mt-0.5">Name: <span className="font-mono">{hoverName || '—'}</span></div>
+        <div className="mt-0.5 flex items-center gap-2">
+          <span>Hit plane:</span>
+          <span className={`h-2.5 w-2.5 rounded-full ${hoverIsHit ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+        </div>
+        <div className="mt-1 text-[10px] text-slate-500">Click only works on names starting with "hit-"</div>
+      </div>
     </section>
   );
 }
