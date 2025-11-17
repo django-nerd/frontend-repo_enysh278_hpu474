@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Hero from './components/Hero';
-import Portal from './components/Portal';
+const PortalLazy = lazy(() => import('./components/Portal'));
 
 function App() {
   const [route, setRoute] = useState('home');
@@ -30,7 +30,9 @@ function App() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.5, ease: 'easeInOut' }}
           >
-            <Portal onBack={goHome} />
+            <Suspense fallback={null}>
+              <PortalLazy onBack={goHome} />
+            </Suspense>
           </motion.div>
         )}
       </AnimatePresence>

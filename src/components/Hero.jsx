@@ -1,14 +1,18 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, lazy, Suspense, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import Spline from '@splinetool/react-spline';
-import BackgroundNPCs from './BackgroundNPCs';
-import Environment3D from './Environment3D';
+// Lazy-load heavy components to reduce initial bundle
+const SplineLazy = lazy(() => import('@splinetool/react-spline'));
+const BackgroundNPCsLazy = lazy(() => import('./BackgroundNPCs'));
+const Environment3DLazy = lazy(() => import('./Environment3D'));
 
 const SCENE_URL = 'https://prod.spline.design/VJLoxp84lCdVfdZu/scene.splinecode';
 
 export default function Hero({ onOpenPortal }) {
   const [loaded, setLoaded] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [canLoad3D, setCanLoad3D] = useState(false);
+
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const sectionRef = useRef(null);
@@ -19,6 +23,44 @@ export default function Hero({ onOpenPortal }) {
   const [effects, setEffects] = useState([]);
   const idRef = useRef(0);
   const lastOpenRef = useRef(0);
+
+  // Performance tier detection
+  const perf = useMemo(() => {
+    const w = typeof window !== 'undefined' ? window : undefined;
+    const prefersReduced = w?.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const mem = (navigator && 'deviceMemory' in navigator) ? navigator.deviceMemory : undefined; // e.g., 4, 8
+    const cores = navigator?.hardwareConcurrency || undefined;
+    const lowMem = mem && mem <= 4;
+    const lowCore = cores && cores <= 4;
+    const tier = prefersReduced ? 'reduced' : (lowMem || lowCore ? 'low' : 'high');
+    const particleCount = tier === 'reduced' ? 0 : tier === 'low' ? 8 : 14;
+    return { tier, prefersReduced, particleCount };
+  }, []);
+
+  // Only initialize heavy 3D once section is in viewport AND after main thread is idle
+  useEffect(() => {
+    if (!sectionRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setInView(true);
+          }
+        }
+      },
+      { rootMargin: '0px 0px 0px 0px', threshold: 0.1 }
+    );
+    observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    // requestIdleCallback polyfill
+    const ric = (cb) => (window.requestIdleCallback ? window.requestIdleCallback(cb) : window.setTimeout(cb, 120));
+    const cic = (id) => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : window.clearTimeout(id));
+    const id = ric(() => setCanLoad3D(true));
+    return () => cic(id);
+  }, []);
 
   const setCanvasEnhancements = useCallback(() => {
     if (!containerRef.current) return;
@@ -35,6 +77,7 @@ export default function Hero({ onOpenPortal }) {
   }, []);
 
   const spawnEffect = useCallback((pageX, pageY) => {
+    if (perf.particleCount === 0) return; // respect reduced motion
     const section = sectionRef.current;
     if (!section) return;
     const rect = section.getBoundingClientRect();
@@ -43,13 +86,13 @@ export default function Hero({ onOpenPortal }) {
 
     const id = idRef.current++;
     const hueBase = Math.random() > 0.5 ? 160 : 190; // emerald/cyan family
-    const lifetime = 1200 + Math.random() * 500;
+    const lifetime = 1100 + Math.random() * 400;
     setEffects((prev) => [...prev, { id, x, y, hueBase, lifetime }]);
 
     window.setTimeout(() => {
       setEffects((prev) => prev.filter((e) => e.id !== id));
-    }, lifetime + 100);
-  }, []);
+    }, lifetime + 120);
+  }, [perf.particleCount]);
 
   const triggerPortal = useCallback(() => {
     const now = Date.now();
@@ -60,7 +103,7 @@ export default function Hero({ onOpenPortal }) {
     window.setTimeout(() => {
       setIsTransitioning(false);
       if (typeof onOpenPortal === 'function') onOpenPortal();
-    }, 360);
+    }, 320);
   }, [onOpenPortal]);
 
   // When the Spline scene loads, wire object-level mouseDown to only respond to keycaps
@@ -138,7 +181,7 @@ export default function Hero({ onOpenPortal }) {
     e.preventDefault();
   }, []);
 
-  // We no longer listen for pointerdown on the whole canvas; only Spline object-level events
+  const show3D = inView && canLoad3D;
 
   return (
     <section
@@ -160,12 +203,16 @@ export default function Hero({ onOpenPortal }) {
 
       {/* 3D Environment behind the keyboard but above texture grid */}
       <div className="absolute inset-0 z-10">
-        <Environment3D />
+        <Suspense fallback={null}>
+          <Environment3DLazy />
+        </Suspense>
       </div>
 
       {/* Background ambience above the environment but below Spline */}
       <div className="absolute inset-0 z-20">
-        <BackgroundNPCs />
+        <Suspense fallback={null}>
+          <BackgroundNPCsLazy />
+        </Suspense>
       </div>
 
       {/* Spline Canvas at the top of visual stack (except loader) */}
@@ -184,19 +231,23 @@ export default function Hero({ onOpenPortal }) {
           } catch (_) {}
         }}
       >
-        <Spline scene={SCENE_URL} onLoad={handleLoad} />
+        {show3D ? (
+          <Suspense fallback={null}>
+            <SplineLazy scene={SCENE_URL} onLoad={handleLoad} />
+          </Suspense>
+        ) : null}
       </div>
 
       {/* Interaction VFX (above Spline, below loader) */}
       <div className="pointer-events-none absolute inset-0 z-40">
         {effects.map((fx) => (
-          <EffectBurst key={fx.id} x={fx.x} y={fx.y} hueBase={fx.hueBase} lifetime={fx.lifetime} />
+          <EffectBurst key={fx.id} x={fx.x} y={fx.y} hueBase={fx.hueBase} lifetime={fx.lifetime} count={perf.particleCount} />
         ))}
       </div>
 
       {/* Minimal loader while the scene initializes */}
       <AnimatePresence>
-        {!loaded && (
+        {!loaded && show3D && (
           <motion.div
             className="absolute inset-0 z-40 flex items-center justify-center"
             initial={{ opacity: 0 }}
@@ -249,20 +300,21 @@ export default function Hero({ onOpenPortal }) {
   );
 }
 
-function EffectBurst({ x, y, hueBase = 170, lifetime = 1400 }) {
-  const count = 14;
-  const particles = Array.from({ length: count }).map((_, i) => {
-    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-    const speed = 80 + Math.random() * 120;
-    const dx = Math.cos(angle) * speed;
-    const dy = Math.sin(angle) * speed * 0.8; // slight vertical restraint
-    const size = 2 + Math.random() * 3;
-    const delay = Math.random() * 60;
-    const hue = hueBase + (Math.random() - 0.5) * 20;
-    const sat = 85 + Math.random() * 10;
-    const light = 55 + Math.random() * 10;
-    return { i, dx, dy, size, delay, color: `hsl(${hue} ${sat}% ${light}%)` };
-  });
+function EffectBurst({ x, y, hueBase = 170, lifetime = 1400, count = 14 }) {
+  const particles = useMemo(() => {
+    return Array.from({ length: count }).map((_, i) => {
+      const angle = (Math.PI * 2 * i) / Math.max(1, count) + (Math.random() - 0.5) * 0.5;
+      const speed = 80 + Math.random() * 120;
+      const dx = Math.cos(angle) * speed;
+      const dy = Math.sin(angle) * speed * 0.8; // slight vertical restraint
+      const size = 2 + Math.random() * 3;
+      const delay = Math.random() * 60;
+      const hue = hueBase + (Math.random() - 0.5) * 20;
+      const sat = 85 + Math.random() * 10;
+      const light = 55 + Math.random() * 10;
+      return { i, dx, dy, size, delay, color: `hsl(${hue} ${sat}% ${light}%)` };
+    });
+  }, [count, hueBase]);
 
   const rippleSize = 18 + Math.random() * 18;
   const glowSize = 160 + Math.random() * 120;
