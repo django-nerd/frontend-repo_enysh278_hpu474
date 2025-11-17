@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 // - Volumetric light shafts
 // - Perspective floor grid with soft reflection
 // - Layered fog for depth
+// - Soft moving cloud layers
 export default function Environment3D() {
   return (
     <div className="pointer-events-none absolute inset-0">
@@ -19,6 +20,9 @@ export default function Environment3D() {
 
       {/* Aurora veil */}
       <Aurora />
+
+      {/* Soft clouds (above mountains, below Spline) */}
+      <Clouds />
 
       {/* Horizon glow */}
       <div
@@ -72,6 +76,57 @@ function Aurora() {
             'linear-gradient(90deg, rgba(16,185,129,0.12), rgba(99,102,241,0.18), rgba(34,211,238,0.12))',
         }}
       />
+    </motion.div>
+  );
+}
+
+function Clouds() {
+  // Three parallax cloud strata using blurred gradient blobs
+  return (
+    <div className="absolute inset-0 -z-12">
+      <CloudLayer speed={80} opacity={0.18} scale={1.2} y={10} seed={13} />
+      <CloudLayer speed={65} opacity={0.22} scale={1.0} y={16} seed={29} />
+      <CloudLayer speed={54} opacity={0.26} scale={0.95} y={22} seed={41} />
+    </div>
+  );
+}
+
+function CloudLayer({ speed = 60, opacity = 0.2, scale = 1, y = 16, seed = 0 }) {
+  const blobs = Array.from({ length: 6 }).map((_, i) => {
+    const w = 220 + ((i * 47 + seed) % 80); // px
+    const h = 80 + ((i * 31 + seed) % 40);
+    const top = (y + ((i * 7 + seed) % 18)) + '%';
+    const left = ((i * 17 + seed) % 100) + '%';
+    const hue = 190 + ((i * 11 + seed) % 20);
+    const col = `hsla(${hue}, 32%, 92%, 0.6)`;
+    return { w, h, top, left, col };
+  });
+
+  return (
+    <motion.div
+      aria-hidden
+      className="absolute inset-0"
+      style={{ opacity }}
+      initial={{ x: 0 }}
+      animate={{ x: [-60, 60, -60] }}
+      transition={{ duration: speed, repeat: Infinity, ease: 'easeInOut' }}
+    >
+      {blobs.map((b, idx) => (
+        <div
+          key={idx}
+          className="absolute rounded-full blur-xl"
+          style={{
+            top: b.top,
+            left: b.left,
+            width: b.w,
+            height: b.h,
+            background: `radial-gradient(60% 50% at 50% 50%, ${b.col} 0%, rgba(255,255,255,0.0) 70%)`,
+            transform: `scale(${scale})`,
+            filter: 'blur(18px) saturate(120%)',
+            mixBlendMode: 'screen',
+          }}
+        />
+      ))}
     </motion.div>
   );
 }

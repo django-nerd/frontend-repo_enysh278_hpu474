@@ -12,8 +12,8 @@ export default function BackgroundNPCs() {
       <ParallaxPixels layer={2} count={10} yStart={120} yEnd={-12} duration={22} opacity={0.14} hue="cyan" />
 
       {/* Birds and falling stars */}
-      <BirdFlock count={6} />
-      <FallingStars count={5} />
+      <BirdFlock count={8} />
+      <FallingStars count={6} />
 
       {/* Scanline shimmer */}
       <ScanlineShimmer />
@@ -73,27 +73,34 @@ function ParallaxPixels({ layer = 1, count = 8, yStart = 110, yEnd = -10, durati
 }
 
 function BirdFlock({ count = 5 }) {
+  // More organic movement: randomized altitude, speed, slight curve, and wing flaps
   return (
     <div className="absolute inset-0">
       {Array.from({ length: count }).map((_, i) => {
-        const top = 10 + (i % 3) * 8;
-        const delay = i * 2.2;
-        const duration = 22 + i * 2;
-        const scale = 0.8 + (i % 3) * 0.15;
+        const top = 8 + (i * 7) % 30; // spread vertically
+        const delay = (i * 1.3) % 6;
+        const duration = 18 + (i % 4) * 3; // varied speed
+        const scale = 0.7 + ((i * 37) % 30) / 100; // 0.7 - 1.0
+        const drift = ((i * 19) % 9) - 4; // -4..4 px wiggle offset base
+        const amp = 6 + (i % 3) * 3; // vertical wave amplitude
+        const directionRight = i % 2 === 0; // alternate directions
+        const startX = directionRight ? '-12vw' : '112vw';
+        const endX = directionRight ? '112vw' : '-12vw';
+
         return (
           <motion.div
             key={`bird-${i}`}
             className="absolute"
-            style={{ top: `${top}%`, left: '-10%', opacity: 0.6, scale }}
-            initial={{ x: '-10vw' }}
-            animate={{ x: '110vw', y: [0, -4, 0, 3, 0] }}
+            style={{ top: `${top}%`, left: 0, opacity: 0.65, scale }}
+            initial={{ x: startX, y: 0 }}
+            animate={{
+              x: endX,
+              y: [0, -amp, amp * 0.3, -amp * 0.5, 0],
+              rotate: [0, directionRight ? -2 : 2, 0, directionRight ? 1 : -1, 0],
+            }}
             transition={{ duration, delay, repeat: Infinity, ease: 'easeInOut' }}
           >
-            {/* simple bird silhouette: double chevron */}
-            <div className="relative w-6 h-3 rotate-[-5deg]">
-              <span className="absolute left-0 top-1/2 h-[2px] w-3 -translate-y-1/2 -rotate-45 bg-slate-700/70" />
-              <span className="absolute right-0 top-1/2 h-[2px] w-3 -translate-y-1/2 rotate-45 bg-slate-700/70" />
-            </div>
+            <BirdSilhouette flapDelay={i * 0.2} baseTilt={directionRight ? -5 : 5} drift={drift} />
           </motion.div>
         );
       })}
@@ -101,21 +108,57 @@ function BirdFlock({ count = 5 }) {
   );
 }
 
+function BirdSilhouette({ flapDelay = 0, baseTilt = 0, drift = 0 }) {
+  // Double-chevron bird with animated wing flaps
+  return (
+    <div className="relative w-7 h-4" style={{ transform: `rotate(${baseTilt}deg)` }}>
+      <motion.span
+        className="absolute left-0 top-1/2 h-[2px] w-3 -translate-y-1/2 bg-slate-700/70"
+        style={{ transformOrigin: 'right center' }}
+        initial={{ rotate: -35 }}
+        animate={{ rotate: [-35, -10, -35] }}
+        transition={{ duration: 0.8, delay: flapDelay, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.span
+        className="absolute right-0 top-1/2 h-[2px] w-3 -translate-y-1/2 bg-slate-700/70"
+        style={{ transformOrigin: 'left center' }}
+        initial={{ rotate: 35 }}
+        animate={{ rotate: [35, 10, 35] }}
+        transition={{ duration: 0.8, delay: flapDelay + 0.1, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {/* tiny body/hinge */}
+      <motion.span
+        className="absolute left-1/2 top-1/2 h-[2px] w-[6px] -translate-x-1/2 -translate-y-1/2 bg-slate-700/60"
+        initial={{ x: 0 }}
+        animate={{ x: [0, drift * 0.15, 0] }}
+        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+      />
+    </div>
+  );
+}
+
 function FallingStars({ count = 6 }) {
+  // Ensure stars travel along their angle; spawn from edges and move diagonally following rotation
   return (
     <div className="absolute inset-0">
       {Array.from({ length: count }).map((_, i) => {
-        const delay = i * 3.5;
-        const duration = 2.5 + (i % 3) * 0.6;
-        const startX = (i * 17 + 20) % 100; // percent
-        const startY = (i % 2 === 0) ? 8 : 15;
+        const dirRight = i % 2 === 0; // alternate directions
+        const angle = dirRight ? -28 : 208; // visual angle of trail
+        const delay = (i * 2.7) % 11;
+        const duration = 1.8 + (i % 3) * 0.7;
+        const startTop = 6 + (i * 3) % 12; // 6% - 18%
+        const startLeft = dirRight ? (-10 - (i % 3) * 8) : (110 + (i % 3) * 8); // offscreen
+        const dx = dirRight ? 320 : -320; // px
+        const dy = 160; // px downward
+        const length = 80 + (i % 3) * 16;
+
         return (
           <motion.span
             key={`star-${i}`}
-            className="absolute h-[2px] w-12 bg-gradient-to-r from-white via-white to-transparent shadow-[0_0_8px_rgba(255,255,255,0.45)]"
-            style={{ left: `${startX}%`, top: `${startY}%`, transformOrigin: 'left center', rotate: -18 }}
+            className="absolute h-[2px] bg-gradient-to-r from-white via-white to-transparent shadow-[0_0_8px_rgba(255,255,255,0.45)]"
+            style={{ left: `${startLeft}%`, top: `${startTop}%`, width: length, transformOrigin: 'left center', rotate: angle }}
             initial={{ opacity: 0, scaleX: 0.6 }}
-            animate={{ opacity: [0, 1, 0], x: 180, y: 55, scaleX: [0.6, 1, 1] }}
+            animate={{ opacity: [0, 1, 0], x: dx, y: dy, scaleX: [0.6, 1, 1] }}
             transition={{ duration, delay, repeat: Infinity, ease: 'easeOut' }}
           />
         );
