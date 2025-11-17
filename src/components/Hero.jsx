@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Spline from '@splinetool/react-spline';
 import BackgroundNPCs from './BackgroundNPCs';
@@ -8,7 +8,65 @@ const SCENE_URL = 'https://prod.spline.design/VJLoxp84lCdVfdZu/scene.splinecode'
 
 export default function Hero() {
   const [loaded, setLoaded] = useState(false);
-  const handleLoad = useCallback(() => setLoaded(true), []);
+  const containerRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const setCanvasEnhancements = useCallback(() => {
+    if (!containerRef.current) return;
+    const canvas = containerRef.current.querySelector('canvas');
+    if (canvas) {
+      canvasRef.current = canvas;
+      canvas.setAttribute('aria-label', 'Interactive 3D keyboard');
+      canvas.style.userSelect = 'none';
+      canvas.style.webkitUserSelect = 'none';
+      canvas.style.touchAction = 'none';
+      canvas.style.webkitTapHighlightColor = 'transparent';
+      canvas.style.cursor = 'default';
+    }
+  }, []);
+
+  const handleLoad = useCallback(() => {
+    setLoaded(true);
+    // after Spline mounts, capture the canvas and harden interaction settings
+    setTimeout(setCanvasEnhancements, 0);
+  }, [setCanvasEnhancements]);
+
+  // Safety: ensure any stuck pointer states inside the Spline canvas are released
+  useEffect(() => {
+    const releasePointer = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      try {
+        const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
+        canvas.dispatchEvent(evt);
+        const mouseEvt = new MouseEvent('mouseup', { bubbles: true, cancelable: true });
+        canvas.dispatchEvent(mouseEvt);
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') releasePointer();
+    };
+
+    window.addEventListener('pointerup', releasePointer, true);
+    window.addEventListener('pointercancel', releasePointer, true);
+    window.addEventListener('blur', releasePointer);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      window.removeEventListener('pointerup', releasePointer, true);
+      window.removeEventListener('pointercancel', releasePointer, true);
+      window.removeEventListener('blur', releasePointer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  const preventContext = useCallback((e) => {
+    // avoid context menu interfering with long-press on touch
+    e.preventDefault();
+  }, []);
 
   return (
     <section
@@ -38,7 +96,22 @@ export default function Hero() {
       </div>
 
       {/* Spline Canvas at the top of visual stack (except loader) */}
-      <div className="absolute inset-0 z-30">
+      <div
+        ref={containerRef}
+        className="absolute inset-0 z-30 select-none"
+        onContextMenu={preventContext}
+        onPointerLeave={() => {
+          // if pointer leaves canvas area while pressed, force release
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          try {
+            const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
+            canvas.dispatchEvent(evt);
+            const mouseEvt = new MouseEvent('mouseup', { bubbles: true, cancelable: true });
+            canvas.dispatchEvent(mouseEvt);
+          } catch (_) {}
+        }}
+      >
         <Spline scene={SCENE_URL} onLoad={handleLoad} />
       </div>
 
