@@ -23,6 +23,7 @@ export default function Hero({ onOpenPortal }) {
   const pressedLockRef = useRef(false);
   const activePointerIdRef = useRef(null);
   const lastPointerDownTsRef = useRef(0);
+  const blockUntilRef = useRef(0); // hard-block window for Spline-level events
 
   // FX state: ephemeral interaction bursts
   const [effects, setEffects] = useState([]);
@@ -67,10 +68,18 @@ export default function Hero({ onOpenPortal }) {
     return () => cic(id);
   }, []);
 
+  const enableCanvasPointerEvents = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.pointerEvents = '';
+  }, []);
+
   const releaseLock = useCallback(() => {
     pressedLockRef.current = false;
     activePointerIdRef.current = null;
-  }, []);
+    // End hard-block window and re-enable events
+    blockUntilRef.current = 0;
+    enableCanvasPointerEvents();
+  }, [enableCanvasPointerEvents]);
 
   const setCanvasEnhancements = useCallback(() => {
     if (!containerRef.current) return;
@@ -89,6 +98,7 @@ export default function Hero({ onOpenPortal }) {
         // If already locked, block additional down events in this sequence
         if (pressedLockRef.current) {
           ev.preventDefault?.();
+          ev.stopImmediatePropagation?.();
           ev.stopPropagation?.();
           return;
         }
@@ -157,13 +167,41 @@ export default function Hero({ onOpenPortal }) {
 
     // Create and save handler so we can remove it later
     const mouseDownHandler = (e) => {
-      // Enforce single press: only accept from the active pointer once
+      const now = performance.now();
+      // Hard block: ignore any Spline mouseDown during block window
+      if (now < blockUntilRef.current) {
+        // Swallow event aggressively
+        e?.stopImmediatePropagation?.();
+        e?.stopPropagation?.();
+        e?.preventDefault?.();
+        const oe = e?.originalEvent;
+        oe?.stopImmediatePropagation?.();
+        oe?.stopPropagation?.();
+        oe?.preventDefault?.();
+        return;
+      }
+
+      // Enforce single press: only accept first hit and then open a short block window
       if (pressedLockRef.current) {
         const pid = e?.originalEvent?.pointerId ?? 'mouse';
         if (activePointerIdRef.current !== null && activePointerIdRef.current !== pid) {
+          e?.stopImmediatePropagation?.();
+          e?.stopPropagation?.();
+          e?.preventDefault?.();
+          const oe = e?.originalEvent;
+          oe?.stopImmediatePropagation?.();
+          oe?.stopPropagation?.();
+          oe?.preventDefault?.();
           return; // ignore different pointer while locked
         }
-        // If locked and same pointer, ignore further mouseDowns
+        // Same pointer additional mouseDown -> swallow
+        e?.stopImmediatePropagation?.();
+        e?.stopPropagation?.();
+        e?.preventDefault?.();
+        const oe2 = e?.originalEvent;
+        oe2?.stopImmediatePropagation?.();
+        oe2?.stopPropagation?.();
+        oe2?.preventDefault?.();
         return;
       }
 
@@ -181,8 +219,29 @@ export default function Hero({ onOpenPortal }) {
       activePointerIdRef.current = e?.originalEvent?.pointerId ?? 'mouse';
       lastPointerDownTsRef.current = typeof e?.originalEvent?.timeStamp === 'number' ? e.originalEvent.timeStamp : performance.now();
 
+      // Start a very short hard-block window and temporarily disable pointer events on the canvas
+      blockUntilRef.current = now + 140; // ~1-2 frames
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.style.pointerEvents = 'none';
+        // Re-enable soon, or upon natural release
+        window.setTimeout(() => {
+          enableCanvasPointerEvents();
+        }, 160);
+      }
+
       const clientX = e?.originalEvent?.clientX ?? 0;
       const clientY = e?.originalEvent?.clientY ?? 0;
+
+      // Swallow the original event to block other Spline object handlers
+      e?.stopImmediatePropagation?.();
+      e?.stopPropagation?.();
+      e?.preventDefault?.();
+      const oe = e?.originalEvent;
+      oe?.stopImmediatePropagation?.();
+      oe?.stopPropagation?.();
+      oe?.preventDefault?.();
+
       spawnEffect(clientX, clientY);
       triggerPortal();
     };
@@ -193,7 +252,7 @@ export default function Hero({ onOpenPortal }) {
     } catch (_) {
       // no-op if API changes
     }
-  }, [setCanvasEnhancements, spawnEffect, triggerPortal]);
+  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents]);
 
   // Cleanup Spline listeners on unmount
   useEffect(() => {
