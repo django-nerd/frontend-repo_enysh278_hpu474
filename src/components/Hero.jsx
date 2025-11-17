@@ -19,6 +19,9 @@ export default function Hero({ onOpenPortal }) {
   const splineRef = useRef(null);
   const splineMouseDownHandlerRef = useRef(null);
 
+  // Prevent multi-press during a single pointer down sequence
+  const pressedLockRef = useRef(false);
+
   // FX state: ephemeral interaction bursts
   const [effects, setEffects] = useState([]);
   const idRef = useRef(0);
@@ -115,10 +118,19 @@ export default function Hero({ onOpenPortal }) {
 
     // Create and save handler so we can remove it later
     const mouseDownHandler = (e) => {
+      // Only react to primary button down, ignore repeats until pointer is released
+      if (pressedLockRef.current) return;
+      const btn = e?.originalEvent?.button;
+      const buttons = e?.originalEvent?.buttons;
+      if (btn !== 0 && buttons !== 1) return;
+
       const name = e?.target?.name?.toLowerCase?.() || '';
       // Heuristics: only react when clicking key-like objects
       const isKey = name.startsWith('key') || name.includes('keycap') || name.includes('cap') || name.includes('keyboard');
       if (!isKey) return;
+
+      // Lock this press so only one object receives it until pointer up
+      pressedLockRef.current = true;
 
       const clientX = e?.originalEvent?.clientX ?? 0;
       const clientY = e?.originalEvent?.clientY ?? 0;
@@ -149,6 +161,8 @@ export default function Hero({ onOpenPortal }) {
   useEffect(() => {
     const releasePointer = () => {
       const canvas = canvasRef.current;
+      // Release global lock to allow next press
+      pressedLockRef.current = false;
       if (!canvas) return;
       try {
         const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
@@ -222,6 +236,8 @@ export default function Hero({ onOpenPortal }) {
         onContextMenu={preventContext}
         onPointerLeave={() => {
           const canvas = canvasRef.current;
+          // Release lock on leave so next entry can press again
+          pressedLockRef.current = false;
           if (!canvas) return;
           try {
             const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
