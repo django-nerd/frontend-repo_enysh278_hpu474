@@ -15,26 +15,30 @@ export default function Hero() {
       aria-label="3D keyboard scene"
       className="relative h-screen w-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-slate-100"
     >
-      {/* Subtle texture grid */}
+      {/* Subtle texture grid (push behind the environment) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-[0.06] bg-[radial-gradient(rgba(0,0,0,0.8)_1px,transparent_1px)] [background-size:18px_18px]"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.05] bg-[radial-gradient(rgba(0,0,0,0.8)_1px,transparent_1px)] [background-size:18px_18px]"
       />
 
-      {/* Soft vignette to center focus */}
+      {/* Soft vignette to center focus (keep very light) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 mix-blend-multiply opacity-30 bg-[radial-gradient(1200px_600px_at_50%_20%,rgba(0,0,0,0.12),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 z-0 mix-blend-multiply opacity-20 bg-[radial-gradient(1200px_600px_at_50%_20%,rgba(0,0,0,0.12),transparent_60%)]"
       />
 
-      {/* 3D Environment behind the keyboard */}
-      <Environment3D />
+      {/* 3D Environment behind the keyboard but above texture grid */}
+      <div className="absolute inset-0 z-10">
+        <Environment3D />
+      </div>
 
-      {/* Background ambience */}
-      <BackgroundNPCs />
+      {/* Background ambience above the environment but below Spline */}
+      <div className="absolute inset-0 z-20">
+        <BackgroundNPCs />
+      </div>
 
-      {/* Spline Canvas */}
-      <div className="absolute inset-0">
+      {/* Spline Canvas at the top of visual stack (except loader) */}
+      <div className="absolute inset-0 z-30">
         <Spline scene={SCENE_URL} onLoad={handleLoad} />
       </div>
 
@@ -42,7 +46,7 @@ export default function Hero() {
       <AnimatePresence>
         {!loaded && (
           <motion.div
-            className="absolute inset-0 flex items-center justify-center"
+            className="absolute inset-0 z-40 flex items-center justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
