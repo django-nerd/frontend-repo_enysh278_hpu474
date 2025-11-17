@@ -158,7 +158,15 @@ export default function Hero({ onOpenPortal }) {
     }, 320);
   }, [onOpenPortal]);
 
-  // When the Spline scene loads, wire object-level mouseDown to only respond to keycaps
+  // Dedicated hit-plane name patterns. Only these are actionable.
+  const HIT_NAME_PATTERNS = useMemo(() => [
+    /^hit-/, // names like hit-A, hit-enter, hit-space
+    /(^|\b)plane(\b|$)/, // contains "plane"
+    /hitplane/, // combined naming
+    /_hit$/ // suffix convention
+  ], []);
+
+  // When the Spline scene loads, wire object-level mouseDown to only respond to hit planes
   const handleLoad = useCallback((splineApp) => {
     setLoaded(true);
     setTimeout(setCanvasEnhancements, 0);
@@ -210,9 +218,9 @@ export default function Hero({ onOpenPortal }) {
       if (btn !== 0 && buttons !== 1) return;
 
       const name = e?.target?.name?.toLowerCase?.() || '';
-      // Heuristics: only react when clicking key-like objects
-      const isKey = name.startsWith('key') || name.includes('keycap') || name.includes('cap') || name.includes('keyboard');
-      if (!isKey) return;
+      // Only react when clicking dedicated hit planes, not full button meshes
+      const isHitPlane = HIT_NAME_PATTERNS.some((re) => re.test(name));
+      if (!isHitPlane) return;
 
       // Lock immediately so sibling/parent hits in the same frame are ignored
       pressedLockRef.current = true;
@@ -252,7 +260,7 @@ export default function Hero({ onOpenPortal }) {
     } catch (_) {
       // no-op if API changes
     }
-  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents]);
+  }, [setCanvasEnhancements, spawnEffect, triggerPortal, enableCanvasPointerEvents, HIT_NAME_PATTERNS]);
 
   // Cleanup Spline listeners on unmount
   useEffect(() => {
