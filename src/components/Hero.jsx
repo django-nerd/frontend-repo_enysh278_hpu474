@@ -56,8 +56,21 @@ export default function Hero({ onKeyAction }) {
   }, []);
 
   useEffect(() => {
-    const id = (window.requestIdleCallback || window.setTimeout)(() => setCanLoad3D(true), 100);
-    return () => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : clearTimeout(id));
+    let id;
+    let usedRIC = false;
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      usedRIC = true;
+      id = window.requestIdleCallback(() => setCanLoad3D(true), { timeout: 500 });
+    } else {
+      id = window.setTimeout(() => setCanLoad3D(true), 100);
+    }
+    return () => {
+      if (usedRIC && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(id);
+      } else {
+        clearTimeout(id);
+      }
+    };
   }, []);
 
   const show3D = inView && canLoad3D;
