@@ -6,7 +6,7 @@ import Environment3D from './Environment3D';
 
 const SCENE_URL = 'https://prod.spline.design/VJLoxp84lCdVfdZu/scene.splinecode';
 
-export default function Hero() {
+export default function Hero({ onOpenPortal }) {
   const [loaded, setLoaded] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const containerRef = useRef(null);
@@ -93,34 +93,18 @@ export default function Hero() {
     }, lifetime + 100);
   }, []);
 
-  const smoothNavigate = useCallback((url) => {
+  const triggerPortal = useCallback(() => {
     const now = Date.now();
-    if (now - lastOpenRef.current < 600) return; // throttle navigations
+    if (now - lastOpenRef.current < 600) return; // throttle transitions
     lastOpenRef.current = now;
 
-    // Progressive enhancement: View Transitions API if available
-    const anyDoc = document;
-    if (typeof anyDoc.startViewTransition === 'function') {
-      try {
-        anyDoc.startViewTransition(() => {
-          window.location.assign(url);
-        });
-        return;
-      } catch (_) {
-        // fall through to overlay
-      }
-    }
-
-    // Fallback: fade overlay, then navigate
+    // Show an aurora-style veil, then swap route in-app
     setIsTransitioning(true);
     window.setTimeout(() => {
-      window.location.assign(url);
-    }, 380);
-  }, []);
-
-  const openPortal = useCallback(() => {
-    smoothNavigate('/portal.html');
-  }, [smoothNavigate]);
+      setIsTransitioning(false);
+      if (typeof onOpenPortal === 'function') onOpenPortal();
+    }, 360);
+  }, [onOpenPortal]);
 
   // Hook pointer presses on the Spline layer
   useEffect(() => {
@@ -130,11 +114,11 @@ export default function Hero() {
       // ignore non-primary
       if (e.button !== undefined && e.button !== 0) return;
       spawnEffect(e.clientX, e.clientY);
-      openPortal();
+      triggerPortal();
     };
     el.addEventListener('pointerdown', onPointerDown);
     return () => el.removeEventListener('pointerdown', onPointerDown);
-  }, [spawnEffect, openPortal]);
+  }, [spawnEffect, triggerPortal]);
 
   // Physical keyboard press also opens portal (once per keystroke)
   useEffect(() => {
@@ -145,11 +129,11 @@ export default function Hero() {
       const jitterX = (Math.random() - 0.5) * vw * 0.2;
       const jitterY = (Math.random() - 0.5) * vh * 0.1;
       spawnEffect(vw * 0.5 + jitterX, vh * 0.7 + jitterY);
-      openPortal();
+      triggerPortal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [spawnEffect, openPortal]);
+  }, [spawnEffect, triggerPortal]);
 
   return (
     <section
@@ -234,7 +218,7 @@ export default function Hero() {
         )}
       </AnimatePresence>
 
-      {/* Smooth transition overlay when navigating */}
+      {/* Smooth transition overlay when navigating in-app */}
       <AnimatePresence>
         {isTransitioning && (
           <motion.div
@@ -242,7 +226,7 @@ export default function Hero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.38, ease: 'easeInOut' }}
+            transition={{ duration: 0.36, ease: 'easeInOut' }}
             aria-hidden
           >
             <div className="absolute inset-0 bg-white/40" />
