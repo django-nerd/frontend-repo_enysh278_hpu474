@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Entering Dev World</title>
+    <style>
+      :root {
+        --bg1: #eaf4ff;
+        --bg2: #f6fbff;
+        --cyan: #34d6f6;
+        --emerald: #22d3ee;
+        --ink: #0f172a;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+          Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: #0b1220;
+        background: radial-gradient(1200px 600px at 50% -10%, rgba(15,23,42,0.06), transparent 60%),
+          linear-gradient(180deg, var(--bg2), var(--bg1));
+        overflow: hidden;
+      }
+      .wrap {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      /* Arctic sky gradient */
+      .sky {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, #e8fbff 0%, #eaf7ff 30%, #f7fbff 70%, #ffffff 100%);
+        z-index: 0;
+      }
+      /* Aurora veil */
+      .aurora {
+        position: absolute;
+        inset: -20% -10% 0 -10%;
+        background: radial-gradient(60% 40% at 30% 10%, rgba(52, 214, 246, 0.25), transparent 60%),
+          radial-gradient(60% 40% at 70% 15%, rgba(34, 211, 238, 0.22), transparent 60%),
+          radial-gradient(40% 30% at 50% 5%, rgba(52, 214, 246, 0.2), transparent 60%);
+        filter: blur(24px) saturate(110%);
+        animation: drift 16s ease-in-out infinite alternate;
+        z-index: 1;
+        pointer-events: none;
+      }
+      @keyframes drift {
+        from { transform: translateY(-6px) translateX(-10px) skewX(-1deg); }
+        to   { transform: translateY(6px) translateX(10px) skewX(1deg); }
+      }
+      /* Vignette */
+      .vignette {
+        position: absolute;
+        inset: -20% -10% -10% -10%;
+        background: radial-gradient(1000px 500px at 50% 20%, rgba(0,0,0,0.12), transparent 60%);
+        mix-blend-mode: multiply;
+        opacity: 0.14;
+        z-index: 2;
+        pointer-events: none;
+      }
+      /* Content */
+      .content {
+        position: relative;
+        z-index: 3;
+        display: grid;
+        place-items: center;
+        height: 100%;
+        text-align: center;
+      }
+      .title {
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        font-size: clamp(32px, 6vw, 72px);
+        background: linear-gradient(90deg, #0b1220, #0b1220);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .subtitle {
+        margin-top: 8px;
+        color: #334155;
+        font-size: clamp(14px, 2.4vw, 18px);
+      }
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 24px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        color: #0b1220;
+        text-decoration: none;
+        font-weight: 600;
+        transition: transform 0.2s ease, background 0.2s ease;
+        backdrop-filter: blur(8px);
+      }
+      .cta:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.85); }
+      .cta:active { transform: translateY(0); }
+      /* Scanline shimmer */
+      .scanlines {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+        background-size: 100% 3px;
+        opacity: 0.08;
+        z-index: 4;
+        pointer-events: none;
+      }
+      .shimmer {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 0%, rgba(52,214,246,0.07) 40%, transparent 60%);
+        animation: shimmer 4.2s ease-in-out infinite;
+        mix-blend-mode: screen;
+        z-index: 5;
+        pointer-events: none;
+      }
+      @keyframes shimmer {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100%); }
+      }
+      /* Floating pixels */
+      .pixels { position: absolute; inset: 0; z-index: 2; pointer-events:none; }
+      .pixel { position: absolute; width: 2px; height: 2px; background: #67e8f9; opacity: 0.8; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" aria-label="Portal">
+      <div class="sky"></div>
+      <div class="aurora"></div>
+      <div class="vignette"></div>
+
+      <div class="content">
+        <div>
+          <h1 class="title">Portal Unlocked</h1>
+          <p class="subtitle">You pressed a key. A new world opens.</p>
+          <a class="cta" href="/" rel="noopener">↩ Back to the keyboard</a>
+        </div>
+      </div>
+
+      <div class="scanlines"></div>
+      <div class="shimmer"></div>
+      <div class="pixels" id="pixels"></div>
+    </div>
+    <script>
+      // Sprinkle some drifting pixels
+      const container = document.getElementById('pixels');
+      const count = 60;
+      for (let i = 0; i < count; i++) {
+        const s = document.createElement('span');
+        s.className = 'pixel';
+        const x = Math.random() * 100;
+        const y = Math.random() * 100;
+        const d = 6 + Math.random() * 10;
+        s.style.left = x + 'vw';
+        s.style.top = y + 'vh';
+        s.style.opacity = 0.5 + Math.random() * 0.5;
+        s.style.background = Math.random() > 0.5 ? '#34d6f6' : '#22d3ee';
+        s.animate(
+          [
+            { transform: 'translateY(0px)', offset: 0 },
+            { transform: 'translateY(-10px)', offset: 0.5 },
+            { transform: 'translateY(0px)', offset: 1 }
+          ],
+          { duration: d * 1000, iterations: Infinity, easing: 'ease-in-out', delay: Math.random() * 2000 }
+        );
+        container.appendChild(s);
+      }
+    </script>
+  </body>
+</html>

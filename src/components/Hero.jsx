@@ -15,6 +15,7 @@ export default function Hero() {
   // FX state: ephemeral interaction bursts
   const [effects, setEffects] = useState([]);
   const idRef = useRef(0);
+  const lastOpenRef = useRef(0);
 
   const setCanvasEnhancements = useCallback(() => {
     if (!containerRef.current) return;
@@ -91,6 +92,14 @@ export default function Hero() {
     }, lifetime + 100);
   }, []);
 
+  const openPortal = useCallback(() => {
+    const now = Date.now();
+    if (now - lastOpenRef.current < 600) return; // throttle opens
+    lastOpenRef.current = now;
+    // open as a user-gesture pop to avoid blockers
+    window.open('/portal.html', '_blank', 'noopener,noreferrer');
+  }, []);
+
   // Hook pointer presses on the Spline layer
   useEffect(() => {
     const el = containerRef.current;
@@ -99,26 +108,26 @@ export default function Hero() {
       // ignore non-primary
       if (e.button !== undefined && e.button !== 0) return;
       spawnEffect(e.clientX, e.clientY);
+      openPortal();
     };
     el.addEventListener('pointerdown', onPointerDown);
     return () => el.removeEventListener('pointerdown', onPointerDown);
-  }, [spawnEffect]);
+  }, [spawnEffect, openPortal]);
 
-  // Bonus: physical keyboard press triggers a center-bottom pulse
+  // Physical keyboard press also opens portal (once per keystroke)
   useEffect(() => {
     const onKeyDown = (e) => {
-      // throttle repeated key events
       if (e.repeat) return;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      // spawn near lower third center to mimic keyboard area
       const jitterX = (Math.random() - 0.5) * vw * 0.2;
       const jitterY = (Math.random() - 0.5) * vh * 0.1;
       spawnEffect(vw * 0.5 + jitterX, vh * 0.7 + jitterY);
+      openPortal();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [spawnEffect]);
+  }, [spawnEffect, openPortal]);
 
   return (
     <section
