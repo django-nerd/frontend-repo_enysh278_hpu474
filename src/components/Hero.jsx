@@ -311,7 +311,7 @@ function EffectBurst({ x, y, hueBase = 170, lifetime = 1400 }) {
             transition={{ duration: lifetime / 1000, delay: p.delay / 1000, ease: 'easeOut' }}
             className="absolute rounded-full shadow-[0_0_6px_rgba(0,0,0,0.15)]"
             style={{ width: p.size, height: p.size, background: p.color }}
-          />)
+          />
         ))}
       </div>
 
