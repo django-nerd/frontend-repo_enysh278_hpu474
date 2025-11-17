@@ -74,6 +74,9 @@ export default function Hero({ onOpenPortal }) {
     return () => cic(id);
   }, []);
 
+  // show3D must be defined before any hooks that depend on it
+  const show3D = inView && canLoad3D;
+
   // Keyboard debug toggle: Shift+D to accept all names as hit
   useEffect(() => {
     const onKey = (e) => {
@@ -379,8 +382,6 @@ export default function Hero({ onOpenPortal }) {
   const preventContext = useCallback((e) => {
     e.preventDefault();
   }, []);
-
-  const show3D = inView && canLoad3D;
 
   return (
     <section
