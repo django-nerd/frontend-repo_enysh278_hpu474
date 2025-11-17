@@ -19,8 +19,10 @@ export default function Hero({ onOpenPortal }) {
   const splineRef = useRef(null);
   const splineMouseDownHandlerRef = useRef(null);
 
-  // Prevent multi-press during a single pointer down sequence
+  // Global press lock and active pointer tracking to prevent multi-press
   const pressedLockRef = useRef(false);
+  const activePointerIdRef = useRef(null);
+  const lastPointerDownTsRef = useRef(0);
 
   // FX state: ephemeral interaction bursts
   const [effects, setEffects] = useState([]);
@@ -65,6 +67,11 @@ export default function Hero({ onOpenPortal }) {
     return () => cic(id);
   }, []);
 
+  const releaseLock = useCallback(() => {
+    pressedLockRef.current = false;
+    activePointerIdRef.current = null;
+  }, []);
+
   const setCanvasEnhancements = useCallback(() => {
     if (!containerRef.current) return;
     const canvas = containerRef.current.querySelector('canvas');
@@ -76,8 +83,40 @@ export default function Hero({ onOpenPortal }) {
       canvas.style.touchAction = 'none';
       canvas.style.webkitTapHighlightColor = 'transparent';
       canvas.style.cursor = 'default';
+
+      // Enforce single actionable press per pointer sequence at the canvas level
+      const onPointerDown = (ev) => {
+        // If already locked, block additional down events in this sequence
+        if (pressedLockRef.current) {
+          ev.preventDefault?.();
+          ev.stopPropagation?.();
+          return;
+        }
+        pressedLockRef.current = true;
+        activePointerIdRef.current = ev.pointerId ?? 'mouse';
+        lastPointerDownTsRef.current = typeof ev.timeStamp === 'number' ? ev.timeStamp : performance.now();
+      };
+      const onPointerUp = () => releaseLock();
+      const onPointerCancel = () => releaseLock();
+      const onLostPointerCapture = () => releaseLock();
+
+      // Use non-passive so we can prevent default/propagation
+      canvas.addEventListener('pointerdown', onPointerDown, { passive: false });
+      canvas.addEventListener('pointerup', onPointerUp, { passive: true });
+      canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
+      canvas.addEventListener('lostpointercapture', onLostPointerCapture, { passive: true });
+
+      // Cleanup listeners if canvas gets replaced
+      const cleanup = () => {
+        canvas.removeEventListener('pointerdown', onPointerDown);
+        canvas.removeEventListener('pointerup', onPointerUp);
+        canvas.removeEventListener('pointercancel', onPointerCancel);
+        canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
+      };
+      // store cleanup on the element for later unmount
+      canvas.__singlePressCleanup = cleanup;
     }
-  }, []);
+  }, [releaseLock]);
 
   const spawnEffect = useCallback((pageX, pageY) => {
     if (perf.particleCount === 0) return; // respect reduced motion
@@ -118,8 +157,16 @@ export default function Hero({ onOpenPortal }) {
 
     // Create and save handler so we can remove it later
     const mouseDownHandler = (e) => {
-      // Only react to primary button down, ignore repeats until pointer is released
-      if (pressedLockRef.current) return;
+      // Enforce single press: only accept from the active pointer once
+      if (pressedLockRef.current) {
+        const pid = e?.originalEvent?.pointerId ?? 'mouse';
+        if (activePointerIdRef.current !== null && activePointerIdRef.current !== pid) {
+          return; // ignore different pointer while locked
+        }
+        // If locked and same pointer, ignore further mouseDowns
+        return;
+      }
+
       const btn = e?.originalEvent?.button;
       const buttons = e?.originalEvent?.buttons;
       if (btn !== 0 && buttons !== 1) return;
@@ -129,8 +176,10 @@ export default function Hero({ onOpenPortal }) {
       const isKey = name.startsWith('key') || name.includes('keycap') || name.includes('cap') || name.includes('keyboard');
       if (!isKey) return;
 
-      // Lock this press so only one object receives it until pointer up
+      // Lock immediately so sibling/parent hits in the same frame are ignored
       pressedLockRef.current = true;
+      activePointerIdRef.current = e?.originalEvent?.pointerId ?? 'mouse';
+      lastPointerDownTsRef.current = typeof e?.originalEvent?.timeStamp === 'number' ? e.originalEvent.timeStamp : performance.now();
 
       const clientX = e?.originalEvent?.clientX ?? 0;
       const clientY = e?.originalEvent?.clientY ?? 0;
@@ -154,6 +203,11 @@ export default function Hero({ onOpenPortal }) {
       try {
         app?.removeEventListener?.('mouseDown', handler);
       } catch (_) {}
+      // Cleanup canvas-level listeners if attached
+      try {
+        const canvas = canvasRef.current;
+        canvas?.__singlePressCleanup?.();
+      } catch (_) {}
     };
   }, []);
 
@@ -161,8 +215,7 @@ export default function Hero({ onOpenPortal }) {
   useEffect(() => {
     const releasePointer = () => {
       const canvas = canvasRef.current;
-      // Release global lock to allow next press
-      pressedLockRef.current = false;
+      releaseLock();
       if (!canvas) return;
       try {
         const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
@@ -189,7 +242,7 @@ export default function Hero({ onOpenPortal }) {
       window.removeEventListener('blur', releasePointer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [releaseLock]);
 
   const preventContext = useCallback((e) => {
     e.preventDefault();
@@ -237,7 +290,7 @@ export default function Hero({ onOpenPortal }) {
         onPointerLeave={() => {
           const canvas = canvasRef.current;
           // Release lock on leave so next entry can press again
-          pressedLockRef.current = false;
+          releaseLock();
           if (!canvas) return;
           try {
             const evt = new PointerEvent('pointerup', { bubbles: true, cancelable: true });
