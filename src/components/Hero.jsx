@@ -8,6 +8,7 @@ const SCENE_URL = 'https://prod.spline.design/VJLoxp84lCdVfdZu/scene.splinecode'
 
 export default function Hero() {
   const [loaded, setLoaded] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const sectionRef = useRef(null);
@@ -92,13 +93,34 @@ export default function Hero() {
     }, lifetime + 100);
   }, []);
 
-  const openPortal = useCallback(() => {
+  const smoothNavigate = useCallback((url) => {
     const now = Date.now();
     if (now - lastOpenRef.current < 600) return; // throttle navigations
     lastOpenRef.current = now;
-    // Navigate in the same tab
-    window.location.assign('/portal.html');
+
+    // Progressive enhancement: View Transitions API if available
+    const anyDoc = document;
+    if (typeof anyDoc.startViewTransition === 'function') {
+      try {
+        anyDoc.startViewTransition(() => {
+          window.location.assign(url);
+        });
+        return;
+      } catch (_) {
+        // fall through to overlay
+      }
+    }
+
+    // Fallback: fade overlay, then navigate
+    setIsTransitioning(true);
+    window.setTimeout(() => {
+      window.location.assign(url);
+    }, 380);
   }, []);
+
+  const openPortal = useCallback(() => {
+    smoothNavigate('/portal.html');
+  }, [smoothNavigate]);
 
   // Hook pointer presses on the Spline layer
   useEffect(() => {
@@ -208,6 +230,30 @@ export default function Hero() {
               </span>
               <span className="text-sm font-medium text-slate-600">Loading scene…</span>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Smooth transition overlay when navigating */}
+      <AnimatePresence>
+        {isTransitioning && (
+          <motion.div
+            className="pointer-events-none fixed inset-0 z-[60]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.38, ease: 'easeInOut' }}
+            aria-hidden
+          >
+            <div className="absolute inset-0 bg-white/40" />
+            <div className="absolute inset-0 opacity-70 mix-blend-screen"
+                 style={{
+                   background:
+                     'radial-gradient(60% 40% at 30% 10%, rgba(52,214,246,0.25), transparent 60%),\n                      radial-gradient(60% 40% at 70% 15%, rgba(34,211,238,0.22), transparent 60%),\n                      radial-gradient(40% 30% at 50% 5%, rgba(52,214,246,0.2), transparent 60%)',
+                   filter: 'blur(20px) saturate(110%)'
+                 }}
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(1000px_500px_at_50%_20%,rgba(0,0,0,0.12),transparent_60%)] opacity-20 mix-blend-multiply" />
           </motion.div>
         )}
       </AnimatePresence>
