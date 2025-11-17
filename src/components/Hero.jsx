@@ -12,6 +12,8 @@ export default function Hero({ onOpenPortal }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const sectionRef = useRef(null);
+  const splineRef = useRef(null);
+  const splineMouseDownHandlerRef = useRef(null);
 
   // FX state: ephemeral interaction bursts
   const [effects, setEffects] = useState([]);
@@ -32,11 +34,73 @@ export default function Hero({ onOpenPortal }) {
     }
   }, []);
 
-  const handleLoad = useCallback(() => {
+  const spawnEffect = useCallback((pageX, pageY) => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const rect = section.getBoundingClientRect();
+    const x = pageX - rect.left;
+    const y = pageY - rect.top;
+
+    const id = idRef.current++;
+    const hueBase = Math.random() > 0.5 ? 160 : 190; // emerald/cyan family
+    const lifetime = 1200 + Math.random() * 500;
+    setEffects((prev) => [...prev, { id, x, y, hueBase, lifetime }]);
+
+    window.setTimeout(() => {
+      setEffects((prev) => prev.filter((e) => e.id !== id));
+    }, lifetime + 100);
+  }, []);
+
+  const triggerPortal = useCallback(() => {
+    const now = Date.now();
+    if (now - lastOpenRef.current < 600) return; // throttle transitions
+    lastOpenRef.current = now;
+
+    setIsTransitioning(true);
+    window.setTimeout(() => {
+      setIsTransitioning(false);
+      if (typeof onOpenPortal === 'function') onOpenPortal();
+    }, 360);
+  }, [onOpenPortal]);
+
+  // When the Spline scene loads, wire object-level mouseDown to only respond to keycaps
+  const handleLoad = useCallback((splineApp) => {
     setLoaded(true);
-    // after Spline mounts, capture the canvas and harden interaction settings
     setTimeout(setCanvasEnhancements, 0);
-  }, [setCanvasEnhancements]);
+
+    splineRef.current = splineApp;
+
+    // Create and save handler so we can remove it later
+    const mouseDownHandler = (e) => {
+      const name = e?.target?.name?.toLowerCase?.() || '';
+      // Heuristics: only react when clicking key-like objects
+      const isKey = name.startsWith('key') || name.includes('keycap') || name.includes('cap') || name.includes('keyboard');
+      if (!isKey) return;
+
+      const clientX = e?.originalEvent?.clientX ?? 0;
+      const clientY = e?.originalEvent?.clientY ?? 0;
+      spawnEffect(clientX, clientY);
+      triggerPortal();
+    };
+    splineMouseDownHandlerRef.current = mouseDownHandler;
+
+    try {
+      splineApp?.addEventListener?.('mouseDown', mouseDownHandler);
+    } catch (_) {
+      // no-op if API changes
+    }
+  }, [setCanvasEnhancements, spawnEffect, triggerPortal]);
+
+  // Cleanup Spline listeners on unmount
+  useEffect(() => {
+    return () => {
+      const app = splineRef.current;
+      const handler = splineMouseDownHandlerRef.current;
+      try {
+        app?.removeEventListener?.('mouseDown', handler);
+      } catch (_) {}
+    };
+  }, []);
 
   // Safety: ensure any stuck pointer states inside the Spline canvas are released
   useEffect(() => {
@@ -71,59 +135,10 @@ export default function Hero({ onOpenPortal }) {
   }, []);
 
   const preventContext = useCallback((e) => {
-    // avoid context menu interfering with long-press on touch
     e.preventDefault();
   }, []);
 
-  // Spawn an ambient VFX burst at page coordinates
-  const spawnEffect = useCallback((pageX, pageY) => {
-    const section = sectionRef.current;
-    if (!section) return;
-    const rect = section.getBoundingClientRect();
-    const x = pageX - rect.left;
-    const y = pageY - rect.top;
-
-    const id = idRef.current++;
-    const hueBase = Math.random() > 0.5 ? 160 : 190; // emerald/cyan family
-    const lifetime = 1200 + Math.random() * 500;
-    setEffects((prev) => [...prev, { id, x, y, hueBase, lifetime }]);
-
-    window.setTimeout(() => {
-      setEffects((prev) => prev.filter((e) => e.id !== id));
-    }, lifetime + 100);
-  }, []);
-
-  const triggerPortal = useCallback(() => {
-    const now = Date.now();
-    if (now - lastOpenRef.current < 600) return; // throttle transitions
-    lastOpenRef.current = now;
-
-    // Show an aurora-style veil, then swap route in-app
-    setIsTransitioning(true);
-    window.setTimeout(() => {
-      setIsTransitioning(false);
-      if (typeof onOpenPortal === 'function') onOpenPortal();
-    }, 360);
-  }, [onOpenPortal]);
-
-  // Only open portal when clicking directly on the Spline canvas (3D keyboard area)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handler = (e) => {
-      // Primary button only and target must be the canvas
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const isPrimary = e.button === undefined || e.button === 0;
-      if (!isPrimary) return;
-      if (e.target !== canvas) return; // ignore clicks on overlays or container
-
-      spawnEffect(e.clientX, e.clientY);
-      triggerPortal();
-    };
-    container.addEventListener('pointerdown', handler, true);
-    return () => container.removeEventListener('pointerdown', handler, true);
-  }, [spawnEffect, triggerPortal]);
+  // We no longer listen for pointerdown on the whole canvas; only Spline object-level events
 
   return (
     <section
@@ -159,7 +174,6 @@ export default function Hero({ onOpenPortal }) {
         className="absolute inset-0 z-30 select-none"
         onContextMenu={preventContext}
         onPointerLeave={() => {
-          // if pointer leaves canvas area while pressed, force release
           const canvas = canvasRef.current;
           if (!canvas) return;
           try {
@@ -298,7 +312,7 @@ function EffectBurst({ x, y, hueBase = 170, lifetime = 1400 }) {
             className="absolute rounded-full shadow-[0_0_6px_rgba(0,0,0,0.15)]"
             style={{ width: p.size, height: p.size, background: p.color }}
           />)
-        )}
+        ))}
       </div>
 
       {/* scanline shimmer ring */}
