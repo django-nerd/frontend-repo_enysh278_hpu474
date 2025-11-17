@@ -34,7 +34,8 @@ export default function Hero({ onOpenPortal }) {
   const [hoverIsHit, setHoverIsHit] = useState(false);
   const [sceneStatus, setSceneStatus] = useState('idle'); // idle | loading | loaded
   const [lastEvent, setLastEvent] = useState('');
-  const [acceptAllForDebug, setAcceptAllForDebug] = useState(true); // default ON so you see changes
+  // Default to hit-only to avoid confusion: Shift+D toggles debug accept-all
+  const [acceptAllForDebug, setAcceptAllForDebug] = useState(false);
 
   // Performance tier detection
   const perf = useMemo(() => {
@@ -77,7 +78,7 @@ export default function Hero({ onOpenPortal }) {
   // show3D must be defined before any hooks that depend on it
   const show3D = inView && canLoad3D;
 
-  // Keyboard debug toggle: Shift+D to accept all names as hit
+  // Keyboard debug toggle: Shift+D to accept all names as hit (for clicks only)
   useEffect(() => {
     const onKey = (e) => {
       if ((e.key === 'd' || e.key === 'D') && e.shiftKey) {
@@ -142,6 +143,7 @@ export default function Hero({ onOpenPortal }) {
       setLastEvent('dom:mousemove');
       // Keep HUD responsive even if Spline events don't fire
       setHoverName(`(canvas x:${Math.round(ev.clientX)} y:${Math.round(ev.clientY)})`);
+      // Never mark as hit from DOM move alone
       setHoverIsHit(false);
       canvas.style.cursor = 'default';
     };
@@ -208,25 +210,32 @@ export default function Hero({ onOpenPortal }) {
     }, 320);
   }, [onOpenPortal]);
 
-  // Strict hit-plane naming. Planes must be named with hit- prefix and be physically above key meshes in Spline.
+  // Strict hit-plane naming for hover indicator only
+  const isHitPlaneNameStrict = useCallback((name) => {
+    if (!name) return false;
+    const n = String(name).toLowerCase();
+    return n.startsWith('hit-');
+  }, []);
+
+  // Debug helper for click acceptance (accept-all when debug is enabled)
   const isHitPlaneName = useCallback((name) => {
-    if (acceptAllForDebug) return true;
+    if (acceptAllForDebug) return true; // clicks only
     if (!name) return false;
     const n = String(name).toLowerCase();
     return n.startsWith('hit-');
   }, [acceptAllForDebug]);
 
-  // Shared hover handler (works with both component props and app-level events)
+  // Shared hover handler (HUD should only turn green on strict hit planes)
   const onSplineHover = useCallback((e) => {
     const name = e?.target?.name || '';
-    const hit = isHitPlaneName(name);
+    const hitStrict = isHitPlaneNameStrict(name);
     setHoverName(name);
-    setHoverIsHit(hit);
+    setHoverIsHit(hitStrict);
     setLastEvent('spline:hover');
     if (canvasRef.current) {
-      canvasRef.current.style.cursor = hit ? 'pointer' : 'default';
+      canvasRef.current.style.cursor = hitStrict ? 'pointer' : 'default';
     }
-  }, [isHitPlaneName]);
+  }, [isHitPlaneNameStrict]);
 
   // Shared mouseDown handler (works with both component props and app-level events)
   const onSplineMouseDown = useCallback((e) => {
@@ -515,8 +524,8 @@ export default function Hero({ onOpenPortal }) {
         </div>
         <div className="mt-0.5">Scene: <span className="font-mono">{sceneStatus}</span></div>
         <div className="mt-0.5">Last event: <span className="font-mono">{lastEvent || '—'}</span></div>
-        <div className="mt-0.5">Mode: <span className="font-mono">{acceptAllForDebug ? 'accept-all' : 'hit-only'}</span> <span className="ml-2 text-[10px] text-slate-500">(Shift+D to toggle)</span></div>
-        <div className="mt-1 text-[10px] text-slate-500">Clicks only work on names starting with "hit-" unless accept-all is enabled.</div>
+        <div className="mt-0.5">Mode: <span className="font-mono">{acceptAllForDebug ? 'accept-all (clicks)' : 'hit-only'}</span> <span className="ml-2 text-[10px] text-slate-500">(Shift+D toggles click acceptance only)</span></div>
+        <div className="mt-1 text-[10px] text-slate-500">Green only when hovering objects named starting with "hit-". Debug mode widens click targets but does not change the green indicator.</div>
       </div>
 
       {/* If events never fired, show a gentle hint after a moment */}
