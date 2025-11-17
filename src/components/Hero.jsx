@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Spline from '@splinetool/react-spline';
+import BackgroundNPCs from './BackgroundNPCs';
 
 const SCENE_URL = 'https://prod.spline.design/VJLoxp84lCdVfdZu/scene.splinecode';
 
@@ -24,6 +25,9 @@ export default function Hero() {
         aria-hidden
         className="pointer-events-none absolute inset-0 mix-blend-multiply opacity-30 bg-[radial-gradient(1200px_600px_at_50%_20%,rgba(0,0,0,0.12),transparent_60%)]"
       />
+
+      {/* Background gaming NPCs / ambience */}
+      <BackgroundNPCs />
 
       {/* Spline Canvas */}
       <div className="absolute inset-0">
