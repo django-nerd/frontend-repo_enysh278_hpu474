@@ -94,10 +94,10 @@ export default function Hero() {
 
   const openPortal = useCallback(() => {
     const now = Date.now();
-    if (now - lastOpenRef.current < 600) return; // throttle opens
+    if (now - lastOpenRef.current < 600) return; // throttle navigations
     lastOpenRef.current = now;
-    // open as a user-gesture pop to avoid blockers
-    window.open('/portal.html', '_blank', 'noopener,noreferrer');
+    // Navigate in the same tab
+    window.location.assign('/portal.html');
   }, []);
 
   // Hook pointer presses on the Spline layer
