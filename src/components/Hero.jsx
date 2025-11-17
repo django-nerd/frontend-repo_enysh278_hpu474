@@ -226,7 +226,6 @@ export default function Hero({ onKeyAction }) {
               scene={SCENE_URL}
               onLoad={handleLoad}
               onMouseMove={onSplineHover}
-              onMouseHover={onSplineHover}
               onMouseDown={onSplineMouseDown}
             />
           </Suspense>
